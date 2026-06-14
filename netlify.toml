@@ -1,10 +1,44 @@
+# netlify.toml
+
+# Redirect untuk API ke animekita.org
 [[redirects]]
   from = "/api/*"
   to = "https://apps.animekita.org/api/v1.2.5/:splat"
   status = 200
   force = true
 
+# Redirect untuk image proxy ke Netlify Function
+[[redirects]]
+  from = "/img-proxy"
+  to = "/.netlify/functions/img-proxy"
+  status = 200
+  force = true
+
+# Redirect untuk SPA (semua rute ke index.html)
 [[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+
+# Konfigurasi Functions
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+
+# Header CORS
+[[headers]]
+  for = "/api/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, OPTIONS"
+
+[[headers]]
+  for = "/img-proxy"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Cache-Control = "public, max-age=86400"
+
+# Build settings untuk Vite
+[build]
+  publish = "dist"
+  command = "npm run build"
