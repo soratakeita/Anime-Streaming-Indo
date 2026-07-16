@@ -44,6 +44,49 @@ export function VideoPlayer({ streams, resos, sizes, title, epNum, likes }) {
   const [isAlive, setIsAlive] = useState(true);
   const videoRef = useRef(null);
 
+  // States untuk Like/Dislike Interaksi
+  const [likeStatus, setLikeStatus] = useState(null); // null | 'liked' | 'disliked'
+  const [currentLikes, setCurrentLikes] = useState(0);
+  const [currentDislikes, setCurrentDislikes] = useState(0);
+
+  useEffect(() => {
+    if (likes) {
+      setCurrentLikes(parseInt(likes.likeCount) || 0);
+      setCurrentDislikes(parseInt(likes.dislikeCount) || 0);
+      setLikeStatus(null);
+    } else {
+      setCurrentLikes(0);
+      setCurrentDislikes(0);
+      setLikeStatus(null);
+    }
+  }, [likes]);
+
+  const handleLike = () => {
+    if (likeStatus === "liked") {
+      setLikeStatus(null);
+      setCurrentLikes((prev) => Math.max(0, prev - 1));
+    } else {
+      if (likeStatus === "disliked") {
+        setCurrentDislikes((prev) => Math.max(0, prev - 1));
+      }
+      setLikeStatus("liked");
+      setCurrentLikes((prev) => prev + 1);
+    }
+  };
+
+  const handleDislike = () => {
+    if (likeStatus === "disliked") {
+      setLikeStatus(null);
+      setCurrentDislikes((prev) => Math.max(0, prev - 1));
+    } else {
+      if (likeStatus === "liked") {
+        setCurrentLikes((prev) => Math.max(0, prev - 1));
+      }
+      setLikeStatus("disliked");
+      setCurrentDislikes((prev) => prev + 1);
+    }
+  };
+
   // Dapatkan semua link untuk resolusi yang dipilih, urutkan berdasarkan prioritas server
   const availableServers = useMemo(() => {
     if (!streams[selectedReso]) return [];
@@ -226,13 +269,29 @@ export function VideoPlayer({ streams, resos, sizes, title, epNum, likes }) {
       {/* Likes Section */}
       {likes && (
         <div className="px-4 pb-3 flex items-center gap-3 border-t border-surface-border pt-3">
-          <button className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-accent transition-colors">
-            <ThumbsUp size={13} />
-            {likes.likeCount ?? "—"}
+          <button 
+            onClick={handleLike}
+            className={cn(
+              "flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-all active:scale-95 duration-100",
+              likeStatus === "liked"
+                ? "bg-accent/15 border-accent/30 text-accent font-semibold"
+                : "border-surface-border hover:border-zinc-700 text-zinc-400 hover:text-zinc-300"
+            )}
+          >
+            <ThumbsUp size={13} className={likeStatus === 'liked' ? "fill-accent" : ""} />
+            <span>{currentLikes}</span>
           </button>
-          <button className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-300 transition-colors">
-            <ThumbsDown size={13} />
-            {likes.dislikeCount ?? "—"}
+          <button 
+            onClick={handleDislike}
+            className={cn(
+              "flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border transition-all active:scale-95 duration-100",
+              likeStatus === "disliked"
+                ? "bg-zinc-800 border-zinc-700 text-zinc-200 font-semibold"
+                : "border-surface-border hover:border-zinc-700 text-zinc-400 hover:text-zinc-300"
+            )}
+          >
+            <ThumbsDown size={13} className={likeStatus === 'disliked' ? "fill-zinc-400" : ""} />
+            <span>{currentDislikes}</span>
           </button>
         </div>
       )}

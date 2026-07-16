@@ -93,7 +93,7 @@ export function getAllVideoUrls(streams) {
 
 export function proxyImage(url) {
   if (!url) return "";
-  return `https://prox2.antonikreatif.workers.dev/?url=${encodeURIComponent(url)}`;
+  return `/img-proxy?url=${encodeURIComponent(url)}`;
 }
 
 export const api = {

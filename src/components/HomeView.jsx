@@ -164,12 +164,42 @@ export function HomeView({ onSelect }) {
     // ========== JADWAL ==========
     if (tab === "jadwal") {
       const raw = current.data || current;
-      const days = Object.entries(raw).filter(([, v]) => Array.isArray(v));
+      let days = [];
+
+      if (Array.isArray(raw)) {
+        // Format API: data is an array of objects [ { day: "Senin", animeList: [...] }, ... ]
+        days = raw.map((d) => {
+          const list = Array.isArray(d.animeList) ? d.animeList : [];
+          return [
+            d.day,
+            list.map((item) => ({
+              id: item.id,
+              judul: item.anime_name || item.judul,
+              url: item.link || item.url,
+              cover: item.cover,
+            })),
+          ];
+        });
+      } else if (typeof raw === "object" && raw !== null) {
+        // Fallback: data is an object with day keys
+        days = Object.entries(raw)
+          .filter(([, v]) => Array.isArray(v))
+          .map(([day, list]) => [
+            day,
+            list.map((item) => ({
+              id: item.id,
+              judul: item.judul || item.anime_name,
+              url: item.url || item.link,
+              cover: item.cover,
+            })),
+          ]);
+      }
+
       return (
         <div className="space-y-6">
           {days.map(([day, animes]) => (
             <div key={day}>
-              <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide mb-3">
+              <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-3">
                 {day}
               </p>
               <div className="flex gap-3 overflow-x-auto pb-2">
@@ -189,7 +219,7 @@ export function HomeView({ onSelect }) {
           ))}
           {days.length === 0 && (
             <p className="text-center py-16 text-zinc-500 text-sm">
-              Tidak ada jadwal.
+              Tidak ada jadwal rilis saat ini.
             </p>
           )}
         </div>

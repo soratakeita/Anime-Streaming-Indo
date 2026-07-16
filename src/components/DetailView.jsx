@@ -1,8 +1,12 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, Eye, Play, Tv } from "lucide-react";
+import { ArrowLeft, Eye, Play, Tv, Grid, List } from "lucide-react";
 import { api, toSeries, toChapters, toStreams } from "../lib/api";
 import { VideoPlayer } from "./VideoPlayer";
 import { Loading } from "./Loaders";
+
+// Local cache maps to prevent re-fetching data when navigating/switching episodes
+const detailsCache = new Map();
+const streamsCache = new Map();
 
 export function DetailView({ animeUrl, onBack }) {
   const [anime, setAnime] = useState(null);
@@ -13,13 +17,28 @@ export function DetailView({ animeUrl, onBack }) {
   const [epLoading, setEpLoading] = useState(false);
   const [likes, setLikes] = useState(null);
 
+  // States untuk Layout mode
+  const [layoutMode, setLayoutMode] = useState("grid"); // grid | list
+
   useEffect(() => {
+    if (detailsCache.has(animeUrl)) {
+      setAnime(detailsCache.get(animeUrl));
+      setLoading(false);
+      setError(null);
+      setActiveEp(null);
+      setStreamData(null);
+      return;
+    }
     setLoading(true);
     setError(null);
     setActiveEp(null);
     setStreamData(null);
     api.series(animeUrl)
-      .then((d) => setAnime(toSeries(d)))
+      .then((d) => {
+        const parsed = toSeries(d);
+        detailsCache.set(animeUrl, parsed);
+        setAnime(parsed);
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [animeUrl]);
@@ -28,6 +47,17 @@ export function DetailView({ animeUrl, onBack }) {
     // ep.url adalah slug seperti "al-150437-12"
     if (!ep.url) return;
     setActiveEp(ep.url);
+
+    if (streamsCache.has(ep.url)) {
+      const cached = streamsCache.get(ep.url);
+      setStreamData(cached.streamData);
+      setLikes(cached.likes);
+      setTimeout(() => {
+        document.getElementById("player-anchor")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 100);
+      return;
+    }
+
     setEpLoading(true);
     setStreamData(null);
     setLikes(null);
@@ -37,8 +67,13 @@ export function DetailView({ animeUrl, onBack }) {
         api.likes(ep.id).catch(() => null),
       ]);
       const parsed = toStreams(vd);
-      setStreamData({ ...parsed, epNum: ep.ch });
-      if (ld?.data?.[0]) setLikes(ld.data[0]);
+      const epStream = { ...parsed, epNum: ep.ch };
+      const epLikes = ld?.data?.[0] || null;
+
+      streamsCache.set(ep.url, { streamData: epStream, likes: epLikes });
+      
+      setStreamData(epStream);
+      setLikes(epLikes);
     } catch (e) {
       console.error("[EPISODE ERROR]", e);
     } finally {
@@ -96,12 +131,52 @@ export function DetailView({ animeUrl, onBack }) {
         />
       )}
 
-      <p className="text-xs font-medium text-zinc-500 uppercase tracking-wide mb-3">
-        Episode ({chapters.length})
-      </p>
+      <div className="flex items-center justify-between mb-4 mt-6">
+        <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+          Episode ({chapters.length})
+        </p>
+        <div className="flex gap-0.5 border border-surface-border p-0.5 rounded-lg bg-surface-muted/30">
+          <button
+            onClick={() => setLayoutMode("grid")}
+            className={`p-1 rounded transition-colors ${
+              layoutMode === "grid" ? "bg-accent text-white" : "text-zinc-500 hover:text-zinc-300"
+            }`}
+            title="Grid View"
+          >
+            <Grid size={13} />
+          </button>
+          <button
+            onClick={() => setLayoutMode("list")}
+            className={`p-1 rounded transition-colors ${
+              layoutMode === "list" ? "bg-accent text-white" : "text-zinc-500 hover:text-zinc-300"
+            }`}
+            title="List View"
+          >
+            <List size={13} />
+          </button>
+        </div>
+      </div>
 
       {chapters.length === 0 ? (
         <p className="text-center py-8 text-zinc-600 text-sm">Belum ada episode.</p>
+      ) : layoutMode === "grid" ? (
+        <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 gap-2 max-h-[300px] overflow-y-auto pr-1">
+          {chapters.map((ep) => (
+            <button
+              key={ep.url || ep.id}
+              onClick={() => loadEp(ep)}
+              disabled={!ep.url}
+              className={`flex items-center justify-center p-2.5 rounded-lg border text-xs font-bold transition-all disabled:opacity-40 aspect-square ${
+                activeEp === ep.url
+                  ? "bg-accent border-accent text-white shadow-lg shadow-accent/25"
+                  : "bg-surface-card border-surface-border hover:border-zinc-700 text-zinc-300 hover:text-zinc-100"
+              }`}
+              title={`Episode ${ep.ch}`}
+            >
+              {ep.ch}
+            </button>
+          ))}
+        </div>
       ) : (
         <div className="flex flex-col gap-1.5 max-h-[360px] overflow-y-auto pr-1">
           {chapters.map((ep) => (
@@ -112,7 +187,7 @@ export function DetailView({ animeUrl, onBack }) {
               className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border text-left transition-colors disabled:opacity-40 ${
                 activeEp === ep.url
                   ? "bg-surface-muted border-accent"
-                  : "bg-surface-card border-surface-border hover:border-zinc-600"
+                  : "bg-surface-card border-surface-border hover:border-zinc-700"
               }`}
             >
               <span className="text-accent font-medium text-sm min-w-[3rem]">Ep {ep.ch}</span>

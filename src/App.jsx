@@ -77,6 +77,36 @@ export default function App() {
     else setView("home");
   };
 
+  // Efek untuk update SEO metadata secara dinamis (Halaman Utama & Detail View)
+  useEffect(() => {
+    let title = "AiaSubs — Streaming Anime Subtitle Indonesia Gratis Terlengkap";
+    let desc = "Tonton streaming anime subtitle Indonesia gratis terlengkap di AiaSubs. Menyediakan update terjadwal anime ongoing, movie, dan genre populer.";
+
+    if (view === "home") {
+      title = "AiaSubs — Streaming Anime Subtitle Indonesia Gratis Terlengkap";
+      desc = "Tonton streaming anime subtitle Indonesia gratis terlengkap di AiaSubs. Menyediakan update terjadwal anime ongoing, movie, dan genre populer.";
+    } else if (view === "search" && query) {
+      title = `Cari "${query}" — AiaSubs`;
+      desc = `Hasil pencarian streaming anime subtitle Indonesia untuk "${query}" di AiaSubs.`;
+    } else if (view === "detail" && selected) {
+      title = `Nonton ${selected.title} Subtitle Indonesia — AiaSubs`;
+      desc = `Nonton streaming anime ${selected.title} Subtitle Indonesia secara gratis dengan kualitas HD terlengkap hanya di AiaSubs.`;
+    }
+
+    document.title = title;
+    
+    const metaDesc = document.querySelector('meta[name="description"]');
+    if (metaDesc) {
+      metaDesc.setAttribute("content", desc);
+    }
+    
+    const ogTitle = document.querySelector('meta[property="og:title"]');
+    if (ogTitle) ogTitle.setAttribute("content", title);
+    
+    const ogDesc = document.querySelector('meta[property="og:description"]');
+    if (ogDesc) ogDesc.setAttribute("content", desc);
+  }, [view, selected, query]);
+
   return (
     <div className="min-h-screen bg-surface text-zinc-200">
       <header className="sticky top-0 z-10 bg-[#0f0f0f]/90 backdrop-blur-sm border-b border-surface-border">
@@ -90,6 +120,7 @@ export default function App() {
           >
             Aia<span className="text-accent">Subs</span>
           </button>
+          
           <div className="flex-1 relative">
             <Search
               size={14}
