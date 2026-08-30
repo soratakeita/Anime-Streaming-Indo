@@ -8,11 +8,11 @@ import { Loading } from "./Loaders";
 const detailsCache = new Map();
 const streamsCache = new Map();
 
-export function DetailView({ animeUrl, onBack }) {
+export function DetailView({ animeUrl, onBack, initialEp = null, onEpChange }) {
   const [anime, setAnime] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activeEp, setActiveEp] = useState(null);
+  const [activeEp, setActiveEp] = useState(initialEp);
   const [streamData, setStreamData] = useState(null);
   const [epLoading, setEpLoading] = useState(false);
   const [likes, setLikes] = useState(null);
@@ -22,17 +22,23 @@ export function DetailView({ animeUrl, onBack }) {
 
   useEffect(() => {
     if (detailsCache.has(animeUrl)) {
-      setAnime(detailsCache.get(animeUrl));
+      const cached = detailsCache.get(animeUrl);
+      setAnime(cached);
       setLoading(false);
       setError(null);
-      setActiveEp(null);
-      setStreamData(null);
+      // jangan reset activeEp jika ada initialEp
+      if (!initialEp) {
+        setActiveEp(null);
+        setStreamData(null);
+      }
       return;
     }
     setLoading(true);
     setError(null);
-    setActiveEp(null);
-    setStreamData(null);
+    if (!initialEp) {
+      setActiveEp(null);
+      setStreamData(null);
+    }
     api.series(animeUrl)
       .then((d) => {
         const parsed = toSeries(d);
@@ -43,10 +49,11 @@ export function DetailView({ animeUrl, onBack }) {
       .finally(() => setLoading(false));
   }, [animeUrl]);
 
-  const loadEp = async (ep) => {
+  const loadEp = async (ep, fromUrl = false) => {
     // ep.url adalah slug seperti "al-150437-12"
     if (!ep.url) return;
     setActiveEp(ep.url);
+    if (!fromUrl) onEpChange?.(ep.url);
 
     if (streamsCache.has(ep.url)) {
       const cached = streamsCache.get(ep.url);
@@ -83,6 +90,29 @@ export function DetailView({ animeUrl, onBack }) {
       document.getElementById("player-anchor")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
     }, 100);
   };
+
+  // auto-load episode dari URL (?ep=) setelah anime ter-load
+  useEffect(() => {
+    if (!anime || !initialEp) return;
+    const chapters = toChapters(anime);
+    const target = chapters.find((c) => c.url === initialEp);
+    if (target) {
+      loadEp(target, true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anime, initialEp]);
+
+  // sync activeEp dari URL saat back/forward
+  useEffect(() => {
+    if (initialEp !== activeEp) {
+      setActiveEp(initialEp || null);
+      if (!initialEp) {
+        setStreamData(null);
+        setLikes(null);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialEp]);
 
   if (loading) return <Loading label="Memuat detail..." />;
   if (error) return <div className="text-center py-16 text-zinc-500 text-sm">{error}</div>;

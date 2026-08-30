@@ -1,9 +1,46 @@
 const BASE = "/api";
 
-async function apiFetch(path, options) {
+// Retry config untuk handle 403 intermittent (WAF / rate-limit)
+const RETRY_STATUSES = new Set([403, 429, 502, 503, 504]);
+const MAX_RETRIES = 2;
+const BASE_DELAY_MS = 700;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function apiFetch(path, options, attempt = 0) {
   const res = await fetch(BASE + path, options);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  const text = await res.text().catch(() => "");
+
+  const isHtml403 = text.trim().startsWith("<!DOCTYPE") && text.includes("403 Forbidden");
+
+  if (!res.ok || isHtml403) {
+    const status = isHtml403 ? 403 : res.status;
+    // Retry untuk status transient (403 kadang WAF, 429 rate-limit, 5xx)
+    if (RETRY_STATUSES.has(status) && attempt < MAX_RETRIES) {
+      const delay = BASE_DELAY_MS * (attempt + 1) + Math.random() * 400;
+      console.warn(`[api] ${path} → ${status}${isHtml403 ? " (HTML)" : ""}, retry ${attempt + 1}/${MAX_RETRIES} after ${Math.round(delay)}ms`);
+      await sleep(delay);
+      return apiFetch(path, options, attempt + 1);
+    }
+    if (isHtml403) {
+      throw new Error(`HTTP 403 - Server animekita memblokir request. Coba refresh 3 detik lagi.`);
+    }
+    // coba parse JSON error dari proxy (sudah diubah jadi JSON)
+    try {
+      const j = JSON.parse(text);
+      if (j.error) throw new Error(j.error);
+    } catch (e) {
+      if (e.message && !e.message.startsWith("HTTP")) throw e;
+    }
+    const snippet = text ? ` - ${text.slice(0, 300).replace(/<[^>]*>/g, "").trim()}` : "";
+    throw new Error(`HTTP ${status}${snippet}`);
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
 
 export function toArray(d) {

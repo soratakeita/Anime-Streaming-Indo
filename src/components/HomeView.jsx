@@ -27,17 +27,25 @@ const POPULAR_GENRES = [
   { name: "Thriller", slug: "thriller" },
 ];
 
-export function HomeView({ onSelect }) {
-  const [tab, setTab] = useState("ongoing");
+export function HomeView({ onSelect, initialTab = "ongoing", initialGenre = "action", initialPage = 1, onTabChange }) {
+  const [tab, setTab] = useState(initialTab);
   const [data, setData] = useState({});
   const [loading, setLoading] = useState(false);
   const [genreLoading, setGenreLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [ongoingPage, setOngoingPage] = useState(1);
-  const [selectedGenre, setSelectedGenre] = useState("action");
-  const [genrePage, setGenrePage] = useState(1);
+  const [ongoingPage, setOngoingPage] = useState(initialTab === "ongoing" ? initialPage : 1);
+  const [selectedGenre, setSelectedGenre] = useState(initialGenre);
+  const [genrePage, setGenrePage] = useState(initialTab === "genre" ? initialPage : 1);
   const [genreData, setGenreData] = useState([]);
   const [genreHasMore, setGenreHasMore] = useState(true);
+
+  // sync dari URL saat back/forward
+  useEffect(() => { setTab(initialTab); }, [initialTab]);
+  useEffect(() => { setSelectedGenre(initialGenre); }, [initialGenre]);
+  useEffect(() => {
+    if (initialTab === "ongoing") setOngoingPage(initialPage);
+    else if (initialTab === "genre") setGenrePage(initialPage);
+  }, [initialTab, initialPage]);
 
   const cacheRef = useRef({});
 
@@ -147,6 +155,31 @@ export function HomeView({ onSelect }) {
     setGenrePage(1);
     setGenreData([]);
     setGenreHasMore(true);
+    onTabChange?.("genre", slug, 1);
+  };
+
+  const handleTabClick = (id) => {
+    setTab(id);
+    if (id !== "ongoing") setOngoingPage(1);
+    if (id === "genre") {
+      onTabChange?.(id, selectedGenre, genrePage);
+    } else if (id === "ongoing") {
+      onTabChange?.(id, null, 1);
+    } else {
+      onTabChange?.(id, null, null);
+    }
+  };
+
+  const handleLoadMoreGenre = () => {
+    const next = genrePage + 1;
+    setGenrePage(next);
+    onTabChange?.("genre", selectedGenre, next);
+  };
+
+  const handleLoadMoreOngoing = () => {
+    const next = ongoingPage + 1;
+    setOngoingPage(next);
+    onTabChange?.("ongoing", null, next);
   };
 
   const current = tab === "ongoing" ? data.ongoing : data[tab];
@@ -318,7 +351,7 @@ export function HomeView({ onSelect }) {
                 <div className="flex justify-center pt-6">
                   <button
                     disabled={genreLoading}
-                    onClick={() => setGenrePage((p) => p + 1)}
+                    onClick={handleLoadMoreGenre}
                     className="px-6 py-2 bg-surface-muted border border-surface-border rounded-lg text-sm font-medium text-zinc-400 hover:text-zinc-200 hover:border-zinc-600 transition-colors disabled:opacity-50"
                   >
                     {genreLoading ? "Memuat..." : "Muat Lebih Banyak"}
@@ -372,10 +405,7 @@ export function HomeView({ onSelect }) {
         {TABS.map((t) => (
           <button
             key={t.id}
-            onClick={() => {
-              setTab(t.id);
-              if (t.id !== "ongoing") setOngoingPage(1);
-            }}
+            onClick={() => handleTabClick(t.id)}
             className={cn(
               "text-sm pb-3 px-4 border-b-2 transition-colors -mb-px whitespace-nowrap",
               tab === t.id

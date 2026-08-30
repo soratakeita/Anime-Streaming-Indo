@@ -148,6 +148,31 @@ function setCache(key, data) {
 // PROXY MIDDLEWARE UTAMA
 // ============================================
 
+function getDynamicRefererForReq(req) {
+  try {
+    const url = new URL(req.url, "http://localhost");
+    const pathname = url.pathname; // /api/series.php etc
+    const params = url.searchParams;
+    if (pathname.includes("series/episode/data.php") || pathname.includes("episode/data.php")) {
+      const ep = params.get("url") || params.get("id") || "";
+      if (ep) return `https://animekita.org/anime/${ep}`;
+    }
+    if (pathname.includes("genreseries.php")) {
+      const genre = params.get("url") || params.get("genre") || "";
+      if (genre) return `https://animekita.org/genre/${genre}`;
+    }
+    if (pathname.includes("series.php") || pathname.includes("seriesSimple.php")) {
+      const slug = params.get("url") || params.get("id") || "";
+      if (slug) return `https://animekita.org/anime/${slug}`;
+    }
+    if (pathname.includes("search.php")) {
+      const kw = params.get("keyword") || params.get("q") || "";
+      if (kw) return `https://animekita.org/search/${encodeURIComponent(kw)}`;
+    }
+  } catch {}
+  return "https://animekita.org/";
+}
+
 const proxyMiddleware = createProxyMiddleware({
   target: TARGET_BASE,
   changeOrigin: true,
@@ -160,18 +185,21 @@ const proxyMiddleware = createProxyMiddleware({
 
   on: {
     proxyReq: (proxyReq, req, res) => {
-      // Headers yang lebih realistis
+      // Referer dinamis per endpoint - FIX utama 403 Forbidden HTML
+      const dynamicReferer = getDynamicRefererForReq(req);
       proxyReq.setHeader(
         "User-Agent",
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
       );
       proxyReq.setHeader("Accept", "application/json, text/plain, */*");
       proxyReq.setHeader("Accept-Language", "id-ID,id;q=0.9,en;q=0.8");
-      proxyReq.setHeader("Referer", "https://animekita.org/");
+      proxyReq.setHeader("Referer", dynamicReferer);
       proxyReq.setHeader("Origin", "https://animekita.org");
-      proxyReq.removeHeader("origin");
+      proxyReq.setHeader("X-Requested-With", "XMLHttpRequest");
+      proxyReq.setHeader("Cache-Control", "no-cache");
+      proxyReq.setHeader("Pragma", "no-cache");
 
-      console.log(`  → ${proxyReq.method} ${proxyReq.path}`);
+      console.log(`  → ${proxyReq.method} ${proxyReq.path} (Referer: ${dynamicReferer})`);
     },
 
     proxyRes: (proxyRes, req, res) => {
@@ -206,6 +234,38 @@ const proxyMiddleware = createProxyMiddleware({
 // ENDPOINT KHUSUS DENGAN CACHING
 // ============================================
 
+// Helper fetch dengan retry untuk endpoint custom
+async function fetchWithRetry(url, attempt = 0) {
+  const MAX_RETRY = 2;
+  const fetch = (await import("node-fetch")).default;
+  try {
+    const response = await fetch(url, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        Referer: "https://animekita.org/",
+        Origin: "https://animekita.org",
+        Accept: "application/json, text/plain, */*",
+        "Accept-Language": "id-ID,id;q=0.9,en;q=0.8",
+      },
+      timeout: 15000,
+    });
+    if ([403, 429, 502, 503, 504].includes(response.status) && attempt < MAX_RETRY) {
+      console.log(`  ↻ Retry ${attempt + 1}/${MAX_RETRY} after ${response.status} for ${url}`);
+      await new Promise((r) => setTimeout(r, 800 * (attempt + 1) + Math.random() * 500));
+      return fetchWithRetry(url, attempt + 1);
+    }
+    return response;
+  } catch (err) {
+    if (attempt < MAX_RETRY) {
+      console.log(`  ↻ Retry ${attempt + 1}/${MAX_RETRY} after error: ${err.message}`);
+      await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+      return fetchWithRetry(url, attempt + 1);
+    }
+    throw err;
+  }
+}
+
 // Anime List (cached)
 app.get("/api/anime-list.php", async (req, res) => {
   const cacheKey = "anime-list";
@@ -217,14 +277,11 @@ app.get("/api/anime-list.php", async (req, res) => {
   }
 
   try {
-    const fetch = (await import("node-fetch")).default;
-    const response = await fetch(`${TARGET_BASE}${API_PATH}/anime-list.php`, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        Referer: "https://animekita.org/",
-      },
-    });
+    const response = await fetchWithRetry(`${TARGET_BASE}${API_PATH}/anime-list.php`);
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(response.status).send(text);
+    }
     const data = await response.json();
     setCache(cacheKey, data);
     res.json(data);
@@ -236,17 +293,13 @@ app.get("/api/anime-list.php", async (req, res) => {
 // Ongoing dengan fix pagination (selalu return data yang sama)
 app.get("/api/home/ongoing.php", async (req, res) => {
   try {
-    const fetch = (await import("node-fetch")).default;
-    const response = await fetch(
+    const response = await fetchWithRetry(
       `${TARGET_BASE}${API_PATH}/home/ongoing.php?page=1`,
-      {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-          Referer: "https://animekita.org/",
-        },
-      },
     );
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(response.status).send(text);
+    }
     const data = await response.json();
     // Return data tanpa memperdulikan parameter page
     res.json(data);

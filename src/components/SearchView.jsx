@@ -3,15 +3,17 @@ import { api, toArray } from "../lib/api";
 import { AnimeCard } from "./AnimeCard";
 import { GridSkeleton } from "./Loaders";
 
-export function SearchView({ keyword, onSelect }) {
+export function SearchView({ keyword, onSelect, initialPage = 1, onPageChange }) {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [searched, setSearched] = useState("");
 
-  // State untuk pagination
-  const [page, setPage] = useState(1);
+  // State untuk pagination - sync dari URL
+  const [page, setPage] = useState(initialPage);
   const [hasMore, setHasMore] = useState(false);
+
+  useEffect(() => { setPage(initialPage); }, [initialPage]);
 
   useEffect(() => {
     if (!keyword.trim()) return;
@@ -37,9 +39,14 @@ export function SearchView({ keyword, onSelect }) {
       .finally(() => setLoading(false));
   }, [keyword, page]); // Efek jalan ulang jika kata kunci atau halaman berubah
 
-  // Reset halaman ke 1 jika pengguna mengetik kata kunci baru
+  // Reset halaman ke 1 jika pengguna mengetik kata kunci baru (tapi hormati initialPage dari URL)
   useEffect(() => {
-    setPage(1);
+    // hanya reset jika keyword berubah dan page bukan initialPage
+    if (page !== 1) {
+      setPage(1);
+      onPageChange?.(1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [keyword]);
 
   if (loading)
@@ -84,7 +91,11 @@ export function SearchView({ keyword, onSelect }) {
             <div className="flex justify-center items-center gap-4 mt-8">
               <button
                 disabled={page === 1}
-                onClick={() => setPage((prev) => prev - 1)}
+                onClick={() => {
+                  const next = page - 1;
+                  setPage(next);
+                  onPageChange?.(next);
+                }}
                 className="px-3 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-200 rounded disabled:opacity-50 hover:bg-zinc-700 transition-colors"
               >
                 Sebelumnya
@@ -94,7 +105,11 @@ export function SearchView({ keyword, onSelect }) {
 
               <button
                 disabled={!hasMore}
-                onClick={() => setPage((prev) => prev + 1)}
+                onClick={() => {
+                  const next = page + 1;
+                  setPage(next);
+                  onPageChange?.(next);
+                }}
                 className="px-3 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-200 rounded disabled:opacity-50 hover:bg-zinc-700 transition-colors"
               >
                 Berikutnya

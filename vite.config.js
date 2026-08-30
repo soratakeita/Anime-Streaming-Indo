@@ -2,11 +2,40 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 const TARGET = "https://apps.animekita.org";
-const HEADERS = {
+
+function getDynamicRefererVite(path) {
+  try {
+    const url = new URL(path, "http://localhost");
+    const pathname = url.pathname;
+    const params = url.searchParams;
+    if (pathname.includes("series/episode/data.php") || pathname.includes("episode/data.php")) {
+      const ep = params.get("url") || params.get("id") || "";
+      if (ep) return `https://animekita.org/anime/${ep}`;
+    }
+    if (pathname.includes("genreseries.php")) {
+      const genre = params.get("url") || params.get("genre") || "";
+      if (genre) return `https://animekita.org/genre/${genre}`;
+    }
+    if (pathname.includes("series.php") || pathname.includes("seriesSimple.php")) {
+      const slug = params.get("url") || params.get("id") || "";
+      if (slug) return `https://animekita.org/anime/${slug}`;
+    }
+    if (pathname.includes("search.php")) {
+      const kw = params.get("keyword") || params.get("q") || "";
+      if (kw) return `https://animekita.org/search/${encodeURIComponent(kw)}`;
+    }
+  } catch {}
+  return "https://animekita.org/";
+}
+
+const STATIC_HEADERS = {
   "User-Agent":
-    "Mozilla/5.0 (Linux; Android 11; Redmi Note 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36",
-  Accept: "application/json",
-  Referer: "https://animekita.org/",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+  Accept: "application/json, text/plain, */*",
+  "Accept-Language": "id-ID,id;q=0.9,en;q=0.8",
+  Origin: "https://animekita.org",
+  "Cache-Control": "no-cache",
+  "X-Requested-With": "XMLHttpRequest",
 };
 
 const ALLOWED_IMAGE_HOSTS = [
@@ -94,7 +123,15 @@ export default defineConfig({
         target: TARGET,
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, "/api/v1.2.5"),
-        headers: HEADERS,
+        headers: STATIC_HEADERS,
+        configure: (proxy) => {
+          proxy.on("proxyReq", (proxyReq, req) => {
+            // override Referer dinamis per endpoint (fix 403 Forbidden)
+            const dynamicReferer = getDynamicRefererVite(req.url || "");
+            proxyReq.setHeader("Referer", dynamicReferer);
+            // console.log(`[vite proxy] ${req.url} -> Referer: ${dynamicReferer}`);
+          });
+        },
       },
     },
   },
