@@ -7,6 +7,40 @@ const RETRY_DELAY_MS = 800;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// Cache sederhana di memory function (warm container) untuk redam 403 setelah push
+// Setelah push, Netlify cold start -> banyak user hit upstream bersamaan -> rate-limit -> 403
+// Cache hit tidak hit upstream sama sekali
+const memCache = new Map(); // key -> { body, contentType, ts, ttl }
+const inflight = new Map(); // key -> Promise untuk coalesce burst request
+
+function getCacheTTL(path) {
+  if (path.includes("home/ongoing.php")) return 60 * 1000; // 1 menit
+  if (path.includes("jadwal.php")) return 5 * 60 * 1000;
+  if (path.includes("anime-list.php")) return 5 * 60 * 1000;
+  if (path.includes("search.php")) return 30 * 1000;
+  if (path.includes("series.php") || path.includes("seriesSimple.php")) return 3 * 60 * 1000;
+  if (path.includes("episode/data.php")) return 60 * 1000;
+  if (path.includes("genreseries.php")) return 2 * 60 * 1000;
+  return 60 * 1000;
+}
+function getCached(key) {
+  const e = memCache.get(key);
+  if (!e) return null;
+  if (Date.now() - e.ts > e.ttl) {
+    // stale tapi masih bisa dipakai sebagai fallback saat 403
+    return { ...e, stale: true };
+  }
+  return { ...e, stale: false };
+}
+function setCached(key, body, contentType, ttl) {
+  memCache.set(key, { body, contentType, ts: Date.now(), ttl });
+  // batasi size
+  if (memCache.size > 200) {
+    const first = memCache.keys().next().value;
+    memCache.delete(first);
+  }
+}
+
 function getDynamicReferer(path, query) {
   try {
     // episode detail paling spesifik dulu
@@ -41,10 +75,12 @@ exports.handler = async function (event, context) {
   // Rekonstruksi query parameters jika ada
   const queryParams = new URLSearchParams(event.queryStringParameters || {}).toString();
   const targetUrl = `${TARGET_BASE}${API_PATH}/${path}${queryParams ? "?" + queryParams : ""}`;
+  const cacheKey = `${event.httpMethod}:${path}?${queryParams}`;
+  const ttl = getCacheTTL(path);
 
-  console.log(`[Netlify Proxy] ${event.httpMethod} ${event.path} -> ${targetUrl}`);
+  console.log(`[Netlify Proxy] ${event.httpMethod} ${event.path} -> ${targetUrl} (ttl ${ttl}ms)`);
 
-  // CORS preflight
+  // CORS preflight - jangan cache
   if (event.httpMethod === "OPTIONS") {
     return {
       statusCode: 200,
@@ -57,10 +93,39 @@ exports.handler = async function (event, context) {
     };
   }
 
-  let lastResponse = null;
-  let lastError = null;
+  // 1) Cek cache sebelum hit upstream - ini yang cegah burst 403 setelah push
+  const cached = getCached(cacheKey);
+  if (cached && !cached.stale && event.httpMethod === "GET") {
+    console.log(`[Netlify Proxy] CACHE HIT ${cacheKey}`);
+    return {
+      statusCode: 200,
+      headers: {
+        "Content-Type": cached.contentType,
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Cache-Control": `public, max-age=${Math.floor(ttl / 1000)}, s-maxage=${Math.floor(ttl / 1000)}`,
+        "X-Cache": "HIT",
+        "X-Cache-Stale": "false",
+      },
+      body: cached.body,
+    };
+  }
+  // coalesce: jika ada request sama yang lagi inflight, tunggu itu (cegah 10 request barengan setelah push)
+  if (inflight.has(cacheKey)) {
+    console.log(`[Netlify Proxy] COALESCE wait ${cacheKey}`);
+    try {
+      const r = await inflight.get(cacheKey);
+      return r;
+    } catch {}
+  }
 
-  for (let attempt = 0; attempt <= RETRY_COUNT; attempt++) {
+  // buat promise untuk coalesce
+  const fetchPromise = (async () => {
+    let lastResponse = null;
+    let lastError = null;
+
+    for (let attempt = 0; attempt <= RETRY_COUNT; attempt++) {
     try {
       // Jitter delay untuk retry agar tidak barengan trigger rate-limit
       if (attempt > 0) {
@@ -181,4 +246,62 @@ exports.handler = async function (event, context) {
     },
     body: JSON.stringify({ error: lastError?.message || "Proxy failed after retries" })
   };
+  })();
+
+  // simpan untuk coalesce
+  if (event.httpMethod === "GET") inflight.set(cacheKey, fetchPromise);
+
+  try {
+    const result = await fetchPromise;
+    // jika upstream 502/403 tapi kita punya stale, kembalikan stale biar user tidak lihat error setelah push
+    if (result.statusCode >= 400) {
+      const stale = getCached(cacheKey);
+      if (stale && stale.body) {
+        console.warn(`[Netlify Proxy] Serving STALE cache for ${cacheKey} due to ${result.statusCode}`);
+        return {
+          statusCode: 200,
+          headers: {
+            "Content-Type": stale.contentType,
+            "Access-Control-Allow-Origin": "*",
+            "Cache-Control": "public, max-age=10, stale-while-revalidate=60",
+            "X-Cache": "STALE",
+            "X-Cache-Stale": "true",
+          },
+          body: stale.body,
+        };
+      }
+    }
+    // simpan ke cache jika sukses 200 JSON (jangan cache error/HTML)
+    if (result.statusCode === 200 && event.httpMethod === "GET" && result.body && !isHtml403(result.body)) {
+      const ct = result.headers["Content-Type"] || "application/json";
+      if (ct.includes("application/json")) {
+        setCached(cacheKey, result.body, ct, ttl);
+        result.headers["X-Cache"] = "MISS";
+        // Netlify edge cache: s-maxage untuk CDN, max-age untuk browser
+        result.headers["Cache-Control"] = `public, max-age=${Math.floor(ttl / 1000)}, s-maxage=${Math.floor(ttl / 1000)}, stale-while-revalidate=60`;
+        result.headers["Netlify-CDN-Cache-Control"] = `public, s-maxage=${Math.floor(ttl / 1000)}, stale-while-revalidate=60`;
+      }
+    }
+    return result;
+  } catch (e) {
+    // fallback stale cache saat error total
+    const stale = getCached(cacheKey);
+    if (stale) {
+      console.warn(`[Netlify Proxy] Fallback stale cache for ${cacheKey} after error: ${e.message}`);
+      return {
+        statusCode: 200,
+        headers: {
+          "Content-Type": stale.contentType,
+          "Access-Control-Allow-Origin": "*",
+          "Cache-Control": "public, max-age=10, stale-while-revalidate=60",
+          "X-Cache": "STALE",
+          "X-Cache-Stale": "true",
+        },
+        body: stale.body,
+      };
+    }
+    throw e;
+  } finally {
+    inflight.delete(cacheKey);
+  }
 };

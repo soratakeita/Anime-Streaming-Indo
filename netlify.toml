@@ -14,7 +14,13 @@
   status = 200
   force = true
 
-# Redirect untuk SPA (semua rute ke index.html)
+# Pastikan sw.js untuk iklan tidak kena SPA redirect - serve file asli
+[[redirects]]
+  from = "/sw.js"
+  to = "/sw.js"
+  status = 200
+
+# Redirect untuk SPA (semua rute ke index.html) - HARUS paling bawah
 [[redirects]]
   from = "/*"
   to = "/index.html"
@@ -31,6 +37,13 @@
   [headers.values]
     Access-Control-Allow-Origin = "*"
     Access-Control-Allow-Methods = "GET, POST, OPTIONS"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Content-Type = "application/javascript; charset=utf-8"
+    Cache-Control = "public, max-age=0, must-revalidate"
+    Service-Worker-Allowed = "/"
 
 [[headers]]
   for = "/img-proxy"
