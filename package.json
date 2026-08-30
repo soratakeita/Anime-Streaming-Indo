@@ -12,6 +12,7 @@
     "dev:all": "npm run dev"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.4",
     "clsx": "^2.1.1",
     "concurrently": "^10.0.3",
     "cors": "^2.8.6",

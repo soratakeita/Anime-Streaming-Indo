@@ -64,7 +64,7 @@ app.get("/img-proxy", async (req, res) => {
     const response = await fetch(url, {
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Mozilla/5.0 (Linux; Android 11; Redmi Note 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36",
         Referer: "https://animekita.org/",
       },
       timeout: 10000,
@@ -185,19 +185,15 @@ const proxyMiddleware = createProxyMiddleware({
 
   on: {
     proxyReq: (proxyReq, req, res) => {
-      // Referer dinamis per endpoint - FIX utama 403 Forbidden HTML
+      // Referer dinamis per endpoint - FIX utama 403 Forbidden HTML + Android UA bypass JA3
       const dynamicReferer = getDynamicRefererForReq(req);
       proxyReq.setHeader(
         "User-Agent",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Linux; Android 11; Redmi Note 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36",
       );
       proxyReq.setHeader("Accept", "application/json, text/plain, */*");
       proxyReq.setHeader("Accept-Language", "id-ID,id;q=0.9,en;q=0.8");
       proxyReq.setHeader("Referer", dynamicReferer);
-      proxyReq.setHeader("Origin", "https://animekita.org");
-      proxyReq.setHeader("X-Requested-With", "XMLHttpRequest");
-      proxyReq.setHeader("Cache-Control", "no-cache");
-      proxyReq.setHeader("Pragma", "no-cache");
 
       console.log(`  → ${proxyReq.method} ${proxyReq.path} (Referer: ${dynamicReferer})`);
     },
@@ -242,9 +238,8 @@ async function fetchWithRetry(url, attempt = 0) {
     const response = await fetch(url, {
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Mozilla/5.0 (Linux; Android 11; Redmi Note 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36",
         Referer: "https://animekita.org/",
-        Origin: "https://animekita.org",
         Accept: "application/json, text/plain, */*",
         "Accept-Language": "id-ID,id;q=0.9,en;q=0.8",
       },
