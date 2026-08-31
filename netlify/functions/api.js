@@ -79,12 +79,12 @@ async function getTurso() {
 }
 
 function getCacheTTL(path) {
-  if (path.includes("home/ongoing.php")) return 60 * 1000; // 1 menit
+  if (path.includes("home/ongoing.php")) return 60 * 1000;
   if (path.includes("jadwal.php")) return 5 * 60 * 1000;
   if (path.includes("anime-list.php")) return 5 * 60 * 1000;
   if (path.includes("search.php")) return 30 * 1000;
-  if (path.includes("series.php") || path.includes("seriesSimple.php")) return 3 * 60 * 1000;
-  if (path.includes("episode/data.php")) return 60 * 1000;
+  if (path.includes("series.php") || path.includes("seriesSimple.php")) return 5 * 60 * 1000;
+  if (path.includes("episode/data.php")) return 10 * 60 * 1000; // OVA/eps jarang berubah, cache lebih lama cegah kosong
   if (path.includes("genreseries.php")) return 2 * 60 * 1000;
   return 60 * 1000;
 }
@@ -144,8 +144,8 @@ function getDynamicReferer(path, query) {
       if (id) return `https://animekita.org/anime/${id}`;
     }
     if (path.includes("series/episode/data.php") || path.includes("episode/data.php")) {
-      const ep = query.url || query.id || "";
-      if (ep) return `https://animekita.org/anime/${ep}`;
+      // untuk episode, generic lebih aman (OVA dengan slash spesifik malah 403)
+      return "https://animekita.org/";
     }
     if (path.includes("genreseries.php")) {
       const genre = query.url || query.genre || "";
