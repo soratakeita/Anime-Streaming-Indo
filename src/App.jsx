@@ -54,6 +54,8 @@ export default function App() {
   const [view, setView] = useState(initial.view);
   const [selected, setSelected] = useState(initial.selected);
   const [detailEp, setDetailEp] = useState(initial.initialEp);
+  // meta detail dari DetailView (judul asli, sinopsis, cover) untuk SEO kaya
+  const [animeMeta, setAnimeMeta] = useState(null);
   const [homeTab, setHomeTab] = useState(initial.homeTab);
   const [homeGenre, setHomeGenre] = useState(initial.homeGenre);
   // page params for home/search are read from URL on popstate
@@ -230,30 +232,134 @@ export default function App() {
     pushUrl(url, true);
   }, [query, pushUrl]);
 
-  // Efek untuk update SEO metadata secara dinamis
+  // bersihkan animeMeta saat ganti anime
+  useEffect(() => { setAnimeMeta(null); }, [selected?.url]);
+
+  // Efek untuk update SEO metadata secara dinamis (title, desc, canonical, OG, JSON-LD)
   useEffect(() => {
+    const SITE = "https://aiasubs.netlify.app";
     let title = "AiaSubs — Streaming Anime Subtitle Indonesia Gratis Terlengkap";
     let desc = "Tonton streaming anime subtitle Indonesia gratis terlengkap di AiaSubs. Menyediakan update terjadwal anime ongoing, movie, dan genre populer.";
+    let canonical = SITE + "/";
+    let ogType = "website";
+    let ogImage = SITE + "/favicon.svg";
+    let allowIndex = true;
 
     if (view === "home") {
       title = "AiaSubs — Streaming Anime Subtitle Indonesia Gratis Terlengkap";
       desc = "Tonton streaming anime subtitle Indonesia gratis terlengkap di AiaSubs. Menyediakan update terjadwal anime ongoing, movie, dan genre populer.";
+      const sp = new URLSearchParams(window.location.search);
+      const qs = sp.toString();
+      canonical = qs ? `${SITE}/?${qs}` : `${SITE}/`;
     } else if (view === "search" && query) {
       title = `Cari "${query}" — AiaSubs`;
       desc = `Hasil pencarian streaming anime subtitle Indonesia untuk "${query}" di AiaSubs.`;
+      canonical = `${SITE}/search?q=${encodeURIComponent(query)}`;
+      allowIndex = true;
     } else if (view === "detail" && selected) {
-      title = `Nonton ${selected.title} Subtitle Indonesia — AiaSubs`;
-      desc = `Nonton streaming anime ${selected.title} Subtitle Indonesia secara gratis dengan kualitas HD terlengkap hanya di AiaSubs.`;
+      const realTitle = animeMeta?.judul || selected.title;
+      const sinopsis = (animeMeta?.sinopsis || animeMeta?.deskripsi || "").replace(/\s+/g, " ").trim().slice(0, 155);
+      title = `Nonton ${realTitle} Subtitle Indonesia — AiaSubs`;
+      desc = sinopsis || `Nonton streaming anime ${realTitle} Subtitle Indonesia secara gratis dengan kualitas HD terlengkap hanya di AiaSubs.`;
+      if (animeMeta?.genre?.length) desc += ` Genre: ${animeMeta.genre.slice(0,3).join(", ")}.`;
+      canonical = `${SITE}/anime/${encodeURIComponent(selected.url)}`;
+      if (detailEp) canonical += `?ep=${encodeURIComponent(detailEp)}`;
+      ogType = "video.other";
+      if (animeMeta?.cover) ogImage = animeMeta.cover;
     }
 
     document.title = title;
-    const metaDesc = document.querySelector('meta[name="description"]');
-    if (metaDesc) metaDesc.setAttribute("content", desc);
-    const ogTitle = document.querySelector('meta[property="og:title"]');
-    if (ogTitle) ogTitle.setAttribute("content", title);
-    const ogDesc = document.querySelector('meta[property="og:description"]');
-    if (ogDesc) ogDesc.setAttribute("content", desc);
-  }, [view, selected, query]);
+    const setMeta = (sel, val) => {
+      const el = document.querySelector(sel);
+      if (el) el.setAttribute("content", val);
+    };
+    const ensureMeta = (prop, attrVal, content) => {
+      let el = document.querySelector(`meta[${prop}="${attrVal}"]`);
+      if (!el) { el = document.createElement("meta"); el.setAttribute(prop, attrVal); document.head.appendChild(el); }
+      el.setAttribute("content", content);
+    };
+    setMeta('meta[name="description"]', desc);
+    setMeta('meta[property="og:title"]', title);
+    setMeta('meta[property="og:description"]', desc);
+    setMeta('meta[property="og:url"]', canonical);
+    setMeta('meta[property="og:type"]', ogType);
+    setMeta('meta[name="twitter:title"]', title);
+    setMeta('meta[name="twitter:description"]', desc);
+    ensureMeta("property", "og:image", ogImage);
+    ensureMeta("name", "twitter:image", ogImage);
+
+    // canonical
+    let linkCanon = document.querySelector('link[rel="canonical"]');
+    if (!linkCanon) {
+      linkCanon = document.createElement("link");
+      linkCanon.setAttribute("rel", "canonical");
+      document.head.appendChild(linkCanon);
+    }
+    linkCanon.setAttribute("href", canonical);
+
+    const metaRobots = document.querySelector('meta[name="robots"]');
+    if (metaRobots) metaRobots.setAttribute("content", allowIndex ? "index, follow, max-image-preview:large" : "noindex, follow");
+
+    // JSON-LD dinamis per view
+    const oldLd = document.getElementById("ld-json-dynamic");
+    if (oldLd) oldLd.remove();
+    const oldBc = document.getElementById("ld-json-breadcrumb");
+    if (oldBc) oldBc.remove();
+    const script = document.createElement("script");
+    script.type = "application/ld+json";
+    script.id = "ld-json-dynamic";
+    let ld = null;
+    if (view === "detail" && selected) {
+      const realTitle = animeMeta?.judul || selected.title;
+      ld = {
+        "@context": "https://schema.org",
+        "@type": "TVSeries",
+        name: realTitle,
+        url: canonical,
+        description: desc,
+        inLanguage: "id-ID",
+        genre: animeMeta?.genre || "Anime",
+        image: ogImage,
+        aggregateRating: animeMeta?.rating ? { "@type": "AggregateRating", ratingValue: String(animeMeta.rating).replace(/[^0-9.]/g,""), bestRating: "10" } : undefined,
+      };
+      // breadcrumb
+      const bc = document.createElement("script");
+      bc.type = "application/ld+json";
+      bc.id = "ld-json-breadcrumb";
+      bc.textContent = JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "Home", item: SITE + "/" },
+          { "@type": "ListItem", position: 2, name: realTitle, item: SITE + "/anime/" + encodeURIComponent(selected.url) },
+        ],
+      });
+      document.head.appendChild(bc);
+    } else if (view === "search" && query) {
+      ld = {
+        "@context": "https://schema.org",
+        "@type": "SearchResultsPage",
+        name: title,
+        description: desc,
+        url: canonical,
+      };
+    } else {
+      ld = {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        name: "AiaSubs",
+        url: SITE + "/",
+        potentialAction: {
+          "@type": "SearchAction",
+          target: `${SITE}/search?q={search_term_string}`,
+          "query-input": "required name=search_term_string",
+        },
+      };
+    }
+    // hapus undefined
+    script.textContent = JSON.stringify(ld, (k,v)=> v===undefined?undefined:v);
+    document.head.appendChild(script);
+  }, [view, selected, query, detailEp, animeMeta]);
 
   return (
     <div className="min-h-screen bg-surface text-zinc-200">
@@ -316,6 +422,7 @@ export default function App() {
             onBack={handleBack}
             initialEp={detailEp}
             onEpChange={handleDetailEpChange}
+            onAnimeMeta={setAnimeMeta}
           />
         )}
       </main>

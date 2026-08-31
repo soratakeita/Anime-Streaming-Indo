@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /img-proxy
+
+# Sitemap
+Sitemap: https://aiasubs.netlify.app/sitemap.xml

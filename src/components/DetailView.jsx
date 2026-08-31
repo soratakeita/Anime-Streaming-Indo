@@ -8,7 +8,7 @@ import { Loading } from "./Loaders";
 const detailsCache = new Map();
 const streamsCache = new Map();
 
-export function DetailView({ animeUrl, onBack, initialEp = null, onEpChange }) {
+export function DetailView({ animeUrl, onBack, initialEp = null, onEpChange, onAnimeMeta }) {
   const [anime, setAnime] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -25,6 +25,7 @@ export function DetailView({ animeUrl, onBack, initialEp = null, onEpChange }) {
     if (detailsCache.has(animeUrl)) {
       const cached = detailsCache.get(animeUrl);
       setAnime(cached);
+      onAnimeMeta?.(cached);
       setLoading(false);
       setError(null);
       // jangan reset activeEp jika ada initialEp
@@ -45,6 +46,7 @@ export function DetailView({ animeUrl, onBack, initialEp = null, onEpChange }) {
         const parsed = toSeries(d);
         detailsCache.set(animeUrl, parsed);
         setAnime(parsed);
+        onAnimeMeta?.(parsed);
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
@@ -76,7 +78,6 @@ export function DetailView({ animeUrl, onBack, initialEp = null, onEpChange }) {
         api.likes(ep.id).catch(() => null),
       ]);
       const parsed = toStreams(vd);
-      // validasi streams tidak kosong
       const hasStream = parsed.streams && Object.keys(parsed.streams).length > 0 && Object.values(parsed.streams).some(arr => arr?.length > 0);
       if (!hasStream) throw new Error("Stream kosong dari server, coba episode lain");
       const epStream = { ...parsed, epNum: ep.ch };
