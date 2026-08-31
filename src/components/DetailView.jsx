@@ -15,6 +15,7 @@ export function DetailView({ animeUrl, onBack, initialEp = null, onEpChange }) {
   const [activeEp, setActiveEp] = useState(initialEp);
   const [streamData, setStreamData] = useState(null);
   const [epLoading, setEpLoading] = useState(false);
+  const [epError, setEpError] = useState(null);
   const [likes, setLikes] = useState(null);
 
   // States untuk Layout mode
@@ -50,7 +51,6 @@ export function DetailView({ animeUrl, onBack, initialEp = null, onEpChange }) {
   }, [animeUrl]);
 
   const loadEp = async (ep, fromUrl = false) => {
-    // ep.url adalah slug seperti "al-150437-12"
     if (!ep.url) return;
     setActiveEp(ep.url);
     if (!fromUrl) onEpChange?.(ep.url);
@@ -59,6 +59,7 @@ export function DetailView({ animeUrl, onBack, initialEp = null, onEpChange }) {
       const cached = streamsCache.get(ep.url);
       setStreamData(cached.streamData);
       setLikes(cached.likes);
+      setEpError(null);
       setTimeout(() => {
         document.getElementById("player-anchor")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
       }, 100);
@@ -66,6 +67,7 @@ export function DetailView({ animeUrl, onBack, initialEp = null, onEpChange }) {
     }
 
     setEpLoading(true);
+    setEpError(null);
     setStreamData(null);
     setLikes(null);
     try {
@@ -74,15 +76,21 @@ export function DetailView({ animeUrl, onBack, initialEp = null, onEpChange }) {
         api.likes(ep.id).catch(() => null),
       ]);
       const parsed = toStreams(vd);
+      // validasi streams tidak kosong
+      const hasStream = parsed.streams && Object.keys(parsed.streams).length > 0 && Object.values(parsed.streams).some(arr => arr?.length > 0);
+      if (!hasStream) throw new Error("Stream kosong dari server, coba episode lain");
       const epStream = { ...parsed, epNum: ep.ch };
       const epLikes = ld?.data?.[0] || null;
-
       streamsCache.set(ep.url, { streamData: epStream, likes: epLikes });
-      
       setStreamData(epStream);
       setLikes(epLikes);
+      setEpError(null);
     } catch (e) {
       console.error("[EPISODE ERROR]", e);
+      // invalidate cache biar retry tidak pakai cache error
+      streamsCache.delete(ep.url);
+      setEpError(e.message || "Gagal memuat episode");
+      setStreamData(null);
     } finally {
       setEpLoading(false);
     }
@@ -150,7 +158,21 @@ export function DetailView({ animeUrl, onBack, initialEp = null, onEpChange }) {
 
       <div id="player-anchor" />
       {epLoading && <Loading label="Memuat video..." />}
-      {streamData && !epLoading && (
+      {epError && !epLoading && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 text-center mb-4">
+          <p className="text-sm text-red-300 mb-3">{epError}</p>
+          <button
+            onClick={() => {
+              const ch = toChapters(anime).find(c => c.url === activeEp);
+              if (ch) loadEp(ch);
+            }}
+            className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-sm rounded-lg transition-colors"
+          >
+            Coba Lagi
+          </button>
+        </div>
+      )}
+      {streamData && !epLoading && !epError && (
         <VideoPlayer
           streams={streamData.streams}
           resos={streamData.resos}

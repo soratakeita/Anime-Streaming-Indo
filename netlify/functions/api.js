@@ -135,7 +135,14 @@ async function setDbCached(key, body, contentType, ttl) {
 
 function getDynamicReferer(path, query) {
   try {
-    // episode detail paling spesifik dulu
+    if (path.includes("getLikes.php") || path.includes("/likes/")) {
+      const id = query.episode_id || query.id || "";
+      if (id) return `https://animekita.org/anime/${id}`;
+    }
+    if (path.includes("komentar") || path.includes("checkTotal.php")) {
+      const id = query.post_id || query.episode_id || query.id || "";
+      if (id) return `https://animekita.org/anime/${id}`;
+    }
     if (path.includes("series/episode/data.php") || path.includes("episode/data.php")) {
       const ep = query.url || query.id || "";
       if (ep) return `https://animekita.org/anime/${ep}`;
