@@ -237,7 +237,7 @@ export default function App() {
 
   // Efek untuk update SEO metadata secara dinamis (title, desc, canonical, OG, JSON-LD)
   useEffect(() => {
-    const SITE = "https://aiasubs.netlify.app";
+    const SITE = window.location.origin;
     let title = "AiaSubs — Streaming Anime Subtitle Indonesia Gratis Terlengkap";
     let desc = "Tonton streaming anime subtitle Indonesia gratis terlengkap di AiaSubs. Menyediakan update terjadwal anime ongoing, movie, dan genre populer.";
     let canonical = SITE + "/";

@@ -27,11 +27,12 @@
   to = "/sw.js"
   status = 200
 
-# Robots & sitemap static fallback - serve file asli jika function tidak aktif
+# Robots dinamis agar Sitemap URL ikut domain (.com vs netlify.app)
 [[redirects]]
   from = "/robots.txt"
-  to = "/robots.txt"
+  to = "/.netlify/functions/robots"
   status = 200
+  force = true
 
 # Redirect untuk SPA (semua rute ke index.html) - HARUS paling bawah
 [[redirects]]

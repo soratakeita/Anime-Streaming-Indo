@@ -8,13 +8,18 @@ const execFileAsync = promisify(execFile);
 
 const TARGET_BASE = "https://apps.animekita.org";
 const API_PATH = "/api/v1.2.5";
-const SITE_URL = (process.env.SITE_URL || process.env.URL || "https://aiasubs.netlify.app").replace(/\/$/, "");
 const ANDROID_UA = "Mozilla/5.0 (Linux; Android 11; Redmi Note 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36";
 
-const STATIC_URLS = [
-  { loc: `${SITE_URL}/`, changefreq: "daily", priority: "1.0" },
-  { loc: `${SITE_URL}/search`, changefreq: "weekly", priority: "0.6" },
-];
+function getSiteUrl(event) {
+  // pakai host dari request agar .com vs netlify.app tidak dianggap duplikat (Bing alternate)
+  const h = event.headers || {};
+  const host = h["x-forwarded-host"] || h.host || h.Host || h[":authority"] || "";
+  if (host) {
+    const proto = h["x-forwarded-proto"] || (host.includes("localhost") ? "http" : "https");
+    return `${proto}://${host}`.replace(/\/$/, "");
+  }
+  return (process.env.SITE_URL || process.env.URL || "https://aiasubs.netlify.app").replace(/\/$/, "");
+}
 
 function escapeXml(s) {
   return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&apos;");
@@ -128,7 +133,12 @@ async function getSlugsFromTurso() {
   }
 }
 
-export const handler = async () => {
+export const handler = async (event) => {
+  const SITE_URL = getSiteUrl(event || { headers: {} });
+  const STATIC_URLS = [
+    { loc: `${SITE_URL}/`, changefreq: "daily", priority: "1.0" },
+    { loc: `${SITE_URL}/search`, changefreq: "weekly", priority: "0.6" },
+  ];
   let slugs = new Set();
 
   // 1) coba fetch upstream (dengan curl fallback) - fresh
