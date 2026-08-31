@@ -51,8 +51,11 @@ async function getTurso() {
   if (!TURSO_TOKEN) return null;
   if (tursoClient) return tursoClient;
   try {
-    const { createClient } = await import("@libsql/client");
-    tursoClient = createClient({ url: TURSO_URL, authToken: TURSO_TOKEN });
+    // pakai web (HTTP) bukan native biar tidak error @libsql/linux-x64-gnu di Netlify Lambda
+    const { createClient } = await import("@libsql/client/web");
+    // web client butuh https:// bukan libsql://
+    const httpUrl = TURSO_URL.replace(/^libsql:\/\//, "https://");
+    tursoClient = createClient({ url: httpUrl, authToken: TURSO_TOKEN });
     if (!tursoReady) {
       await tursoClient.execute(`
         CREATE TABLE IF NOT EXISTS api_cache (
